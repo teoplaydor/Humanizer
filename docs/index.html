@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Хуманизатор текста</title>
+<meta name="description" content="Переписывает текст так, чтобы он читался как написанный человеком. Работает без интернета.">
+<meta name="theme-color" content="#2450c8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+
+/* Layout: editor's desk. Two sheets side by side (source / clean copy), a control strip above, a proof-sheet of metrics below. Blue pencil = the editor's mark. */
+:root {
+  --bg: #eef0f2;
+  --sheet: #ffffff;
+  --ink: #1b2330;
+  --muted: #5d6878;
+  --rule: #d5dae1;
+  --pencil: #2450c8;
+  --pencil-ink: #ffffff;
+  --marker: #ffe58a;
+  --marker-ink: #3a2f00;
+  --good: #1f7a4d;
+  --warn: #b25b00;
+  --font-display: "Golos Text", system-ui, sans-serif;
+  --font-body: "Golos Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161c; --sheet: #1a2029; --ink: #e6eaf0; --muted: #9aa5b4; --rule: #2c3440;
+    --pencil: #7c9cff; --pencil-ink: #0d1424; --marker: #6b5a12; --marker-ink: #fff3c2;
+    --good: #5fd39a; --warn: #f0a050; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161c; --sheet: #1a2029; --ink: #e6eaf0; --muted: #9aa5b4; --rule: #2c3440;
+  --pencil: #7c9cff; --pencil-ink: #0d1424; --marker: #6b5a12; --marker-ink: #fff3c2;
+  --good: #5fd39a; --warn: #f0a050; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--font-body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: grid; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+h1 { font: 700 clamp(22px, 4vw, 30px)/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h1 span { color: var(--pencil); }
+.lede { margin: 0; color: var(--muted); max-width: 62ch; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; overflow: hidden; background: var(--sheet); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { padding: 6px 12px; cursor: pointer; font-size: 13.5px; color: var(--muted); }
+.seg input:checked + label { background: var(--ink); color: var(--bg); }
+.seg input:focus-visible + label { outline: 2px solid var(--pencil); outline-offset: -2px; }
+.ctl-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-right: 6px; }
+.toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--pencil); }
+.sheets { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 760px) { .sheets { grid-template-columns: 1fr; } }
+.sheet { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius); display: flex; flex-direction: column; min-width: 0; }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+.sheet-head h2 { font: 600 13px/1 var(--font-body); text-transform: uppercase; letter-spacing: 0.08em; margin: 0; color: var(--muted); }
+.sheet-head .count { font: 12px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+textarea, .out { flex: 1; width: 100%; min-height: 300px; border: 0; resize: vertical; padding: 14px; font: 15.5px/1.65 var(--font-body); color: var(--ink); background: transparent; }
+textarea:focus-visible { outline: 2px solid var(--pencil); outline-offset: -2px; border-radius: var(--radius); }
+.out { white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; }
+.out.placeholder { color: var(--muted); }
+.out.thinking { color: var(--muted); font-style: italic; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--rule); }
+button { font: 600 14px var(--font-body); border-radius: 999px; padding: 9px 16px; cursor: pointer; border: 1px solid var(--rule); background: var(--sheet); color: var(--ink); }
+button.primary { background: var(--pencil); color: var(--pencil-ink); border-color: var(--pencil); }
+button:disabled { opacity: 0.5; cursor: default; }
+button:focus-visible { outline: 2px solid var(--pencil); outline-offset: 2px; }
+.status { font-size: 13px; color: var(--muted); min-height: 1.3em; }
+.status.err { color: var(--warn); }
+.proof { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px; display: grid; gap: 14px; }
+.proof-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; }
+.proof-head h2 { font: 600 16px var(--font-body); margin: 0; }
+.proof-head p { margin: 0; font-size: 13px; color: var(--muted); max-width: 60ch; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px 24px; }
+.metric { display: grid; gap: 6px; min-width: 0; }
+.metric .name { font-size: 13.5px; }
+.metric .hint { font-size: 12px; color: var(--muted); }
+.bars { display: grid; grid-template-columns: 52px 1fr 54px; gap: 4px 8px; align-items: center; font: 12px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+.bar { height: 8px; border-radius: 4px; background: var(--rule); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--muted); border-radius: 4px; transition: width .4s ease; }
+.bar.after i { background: var(--pencil); }
+.val { text-align: right; color: var(--ink); }
+.delta-good { color: var(--good); }
+.delta-bad { color: var(--warn); }
+.index { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.index b { font: 700 34px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.index .arrow { color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { background: var(--marker); color: var(--marker-ink); border-radius: 4px; padding: 1px 7px; font-size: 13px; }
+.style-box { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius); }
+.style-box summary { cursor: pointer; padding: 12px 14px; font-weight: 600; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.style-box summary span { font-weight: 400; font-size: 13px; color: var(--muted); }
+.style-box summary:focus-visible { outline: 2px solid var(--pencil); outline-offset: -2px; border-radius: var(--radius); }
+.style-inner { display: grid; gap: 8px; padding: 0 14px 14px; }
+.style-inner p { margin: 0; font-size: 13px; color: var(--muted); max-width: 70ch; }
+#style { min-height: 140px; border: 1px solid var(--rule); border-radius: 8px; }
+.style-dist { font: 13px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+.foot { font-size: 12.5px; color: var(--muted); max-width: 75ch; }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+
+html { height: 100%; }
+body { margin: 0; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.model { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.model .info { display: grid; gap: 2px; min-width: 0; }
+.model .info b { font-size: 14px; }
+.model .info span { font-size: 13px; color: var(--muted); }
+.progress { flex-basis: 100%; height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--pencil); transition: width .2s; }
+.pill { font: 600 12px var(--font-body); padding: 3px 9px; border-radius: 999px; background: var(--rule); color: var(--muted); }
+.pill.ok { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Хуманизатор <span>текста</span></h1>
+    <p class="lede">Переписывает текст так, чтобы его статистика была как у живого автора: другой ритм предложений, меньше штампов, менее предсказуемые слова. Всё считается на вашем устройстве, без интернета.</p>
+  </header>
+
+  <section class="model" aria-live="polite">
+    <div class="info"><b id="model-title">Нейросеть не загружена</b><span id="model-sub">Нужно один раз скачать ≈ 600 МБ. Потом приложение работает офлайн.</span></div>
+    <span class="pill" id="model-pill" hidden></span>
+    <button class="primary" id="load">Скачать модели</button>
+    <div class="progress" id="progress" hidden><i></i></div>
+  </section>
+
+  <div class="controls" role="group" aria-label="Настройки">
+    <div><span class="ctl-label">Язык</span>
+      <span class="seg">
+        <input type="radio" name="lang" id="lang-auto" value="auto" checked><label for="lang-auto">Авто</label>
+        <input type="radio" name="lang" id="lang-ru" value="ru"><label for="lang-ru">RU</label>
+        <input type="radio" name="lang" id="lang-en" value="en"><label for="lang-en">EN</label>
+      </span>
+    </div>
+    <div><span class="ctl-label">Режим</span>
+      <span class="seg">
+        <input type="radio" name="mode" id="mode-fast" value="0"><label for="mode-fast">Быстро</label>
+        <input type="radio" name="mode" id="mode-full" value="2" checked><label for="mode-full">Тщательно</label>
+      </span>
+    </div>
+  </div>
+
+  <details class="style-box" id="style-box">
+    <summary>Образец вашего стиля <span id="style-state">необязательно: вставьте свои прошлые тексты, и результат будет подогнан под ваш почерк</span></summary>
+    <div class="style-inner">
+      <p>Вставьте 300 и больше слов, написанных вами без нейросетей. Нейросеть построит статистический профиль вашего письма (насколько предсказуемы ваши слова, как скачет ритм, какие длины предложений и пунктуация) и подгонит результат под него. Без образца текст подгоняется под типичный человеческий профиль.</p>
+      <textarea id="style" spellcheck="false" aria-label="Образец вашего стиля" placeholder="Ваши тексты…"></textarea>
+      <div class="style-dist" id="style-summary"></div>
+    </div>
+  </details>
+
+  <div class="sheets">
+    <section class="sheet" aria-labelledby="src-h">
+      <div class="sheet-head"><h2 id="src-h">Исходный текст</h2><span class="count" id="src-count"></span></div>
+      <textarea id="src" spellcheck="false" aria-label="Исходный текст"></textarea>
+      <div class="actions">
+        <button class="primary" id="run" disabled>Очеловечить</button>
+        <button id="clear">Очистить</button>
+      </div>
+    </section>
+    <section class="sheet" aria-labelledby="out-h">
+      <div class="sheet-head"><h2 id="out-h">Результат</h2><span class="count" id="out-count"></span></div>
+      <div class="out placeholder" id="out" aria-live="polite">Здесь появится переписанный текст.</div>
+      <div class="actions">
+        <button id="copy" disabled>Копировать</button>
+        <button id="stop" hidden>Стоп</button>
+        <span class="status" id="status"></span>
+      </div>
+    </section>
+  </div>
+
+  <section class="proof" aria-labelledby="proof-h">
+    <div class="proof-head">
+      <h2 id="proof-h">Разбор: до и после</h2>
+      <p>То, что измеряют детекторы, посчитанное локальной нейросетью: GLTR (ранги слов), Fast-DetectGPT (кривизна вероятности), burstiness (ритм «удивления»).</p>
+    </div>
+    <div class="index"><span class="ctl-label" id="dist-label">Отклонение от человеческого профиля</span><b id="idx-before">–</b><span class="arrow">→</span><b id="idx-after">–</b><span class="hint" style="font-size:12px;color:var(--muted)">0 = статистически как живой текст</span></div>
+    <div class="metrics" id="metrics"></div>
+  </section>
+
+  <p class="foot">Текст никуда не отправляется: модели работают на вашем устройстве. На телефоне режим «Тщательно» может занять пару минут. Сравнивайте результат с оригиналом: маленькая модель иногда ошибается, за точность фактов отвечает автор.</p>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

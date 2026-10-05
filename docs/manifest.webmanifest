@@ -1,0 +1,16 @@
+{
+  "name": "Хуманизатор текста",
+  "short_name": "Хуманизатор",
+  "description": "Переписывает текст так, чтобы он читался как написанный человеком. Работает без интернета.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eef0f2",
+  "theme_color": "#2450c8",
+  "lang": "ru",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
